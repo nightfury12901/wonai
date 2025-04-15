@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPT4All Chat</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .chat-container {
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 20px;
+            height: 500px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 8px;
+        }
+        .user-message {
+            background-color: #e6f7ff;
+            text-align: right;
+        }
+        .bot-message {
+            background-color: #f2f2f2;
+        }
+        .input-container {
+            display: flex;
+            gap: 10px;
+        }
+        #user-input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        button {
+            padding: 10px 15px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background-color: #cccccc;
+        }
+        .model-select {
+            margin-bottom: 20px;
+        }
+        .typing-indicator {
+            display: none;
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }
+        #status-indicator {
+            margin-bottom: 10px;
+            color: #666;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <h1>GPT4All Chat</h1>
+    
+    <div id="status-indicator">Checking model status...</div>
+    
+    <div class="model-select">
+        <label for="model-select">Select Model:</label>
+        <select id="model-select">
+            {% for key, model in models.items() %}
+                <option value="{{ key }}" {% if key == default_model %}selected{% endif %}>
+                    {{ model.name }}
+                </option>
+            {% endfor %}
+        </select>
+        <button id="preload-button">Preload All Models</button>
+    </div>
+    
+    <div class="chat-container" id="chat-container">
+        <div class="message bot-message">
+            Hello! I'm GPT4All running locally on your computer. How can I help you today?
+        </div>
+    </div>
+    
+    <div class="typing-indicator" id="typing-indicator">Model is generating a response...</div>
+    
+    <div class="input-container">
+        <input type="text" id="user-input" placeholder="Type your message here..." />
+        <button id="send-button">Send</button>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const chatContainer = document.getElementById('chat-container');
+            const userInput = document.getElementById('user-input');
+            const sendButton = document.getElementById('send-button');
+            const modelSelect = document.getElementById('model-select');
+            const statusIndicator = document.getElementById('status-indicator');
+            const typingIndicator = document.getElementById('typing-indicator');
+            const preloadButton = document.getElementById('preload-button');
+            
+            let currentResponse = "";
+            let isGenerating = false;
+            
+            // Check model status on load
+            checkModelStatus();
+            
+            // Handle user input (send on Enter key)
+            userInput.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter' && !isGenerating) {
+                    sendMessage();
+                }
+            });
+            
+            // Handle send button click
+            sendButton.addEventListener('click', function() {
+                if (!isGenerating) {
+                    sendMessage();
+                }
+            });
+            
+            // Handle model selection change
+            modelSelect.addEventListener('change', function() {
+                switchModel(modelSelect.value);
+            });
+            
+            // Handle preload button click
+            preloadButton.addEventListener('click', function() {
+                preloadAllModels();
+                preloadButton.disabled = true;
+                preloadButton.textContent = "Preloading...";
+                setTimeout(() => {
+                    preloadButton.disabled = false;
+                    preloadButton.textContent = "Preload All Models";
+                }, 3000);
+            });
+            
+            function addMessage(message, isUser) {
+                const messageDiv = document.createElement('div');
+                messageDiv.classList.add('message');
+                messageDiv.classList.add(isUser ? 'user-message' : 'bot-message');
+                messageDiv.textContent = message;
+                chatContainer.appendChild(messageDiv);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+            
+            function sendMessage() {
+                const message = userInput.value.trim();
+                if (!message) return;
+                
+                // Add user message to chat
+                addMessage(message, true);
+                userInput.value = '';
+                
+                // Disable input and button while generating
+                isGenerating = true;
+                sendButton.disabled = true;
+                userInput.disabled = true;
+                typingIndicator.style.display = 'block';
+                
+                // Create a placeholder for the streaming response
+                const responseDiv = document.createElement('div');
+                responseDiv.classList.add('message', 'bot-message');
+                responseDiv.id = 'current-response';
+                responseDiv.textContent = '';
+                chatContainer.appendChild(responseDiv);
+                
+                // Use SSE for streaming response
+                const eventSource = new EventSource(`/chat?message=${encodeURIComponent(message)}&model=${modelSelect.value}&_=${Date.now()}`);
+                
+                eventSource.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    
+                    if (data.chunk) {
+                        // Update the current response with the new chunk
+                        currentResponse += data.chunk;
+                        responseDiv.textContent = currentResponse;
+                        chatContainer.scrollTop = chatContainer.scrollHeight;
+                    }
+                    
+                    if (data.end || data.error) {
+                        // Remove the ID from the response div to make it permanent
+                        responseDiv.removeAttribute('id');
+                        eventSource.close();
+                        
+                        // Re-enable input and button
+                        isGenerating = false;
+                        sendButton.disabled = false;
+                        userInput.disabled = false;
+                        typingIndicator.style.display = 'none';
+                        currentResponse = "";
+                        
+                        // Focus back on input
+                        userInput.focus();
+                    }
+                };
+                
+                eventSource.onerror = function() {
+                    // Fall back to non-streaming approach
+                    eventSource.close();
+                    responseDiv.remove();
+                    sendMessageFallback(message);
+                };
+            }
+            
+            function sendMessageFallback(message) {
+                // Fallback to traditional AJAX if SSE fails
+                fetch('/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        message: message,
+                        model: modelSelect.value,
+                        stream: false
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    addMessage(data.response, false);
+                    isGenerating = false;
+                    sendButton.disabled = false;
+                    userInput.disabled = false;
+                    typingIndicator.style.display = 'none';
+                    userInput.focus();
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    addMessage('An error occurred. Please try again.', false);
+                    isGenerating = false;
+                    sendButton.disabled = false;
+                    userInput.disabled = false;
+                    typingIndicator.style.display = 'none';
+                });
+            }
+            
+            function checkModelStatus() {
+                fetch('/status')
+                .then(response => response.json())
+                .then(data => {
+                    const currentModel = data.current_model;
+                    const modelStatus = data.models[currentModel].status;
+                    
+                    if (modelStatus === "Loaded") {
+                        statusIndicator.textContent = `Using model: ${data.models[currentModel].name} (Loaded)`;
+                        sendButton.disabled = false;
+                        userInput.disabled = false;
+                    } else if (modelStatus === "Loading") {
+                        statusIndicator.textContent = `Loading model: ${data.models[currentModel].name}...`;
+                        sendButton.disabled = true;
+                        userInput.disabled = true;
+                        // Check again in 3 seconds
+                        setTimeout(checkModelStatus, 3000);
+                    } else {
+                        statusIndicator.textContent = `Model not loaded: ${data.models[currentModel].name}`;
+                        // Try to load the model
+                        switchModel(currentModel);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error checking status:', error);
+                    statusIndicator.textContent = 'Error checking model status';
+                });
+            }
+            
+            function switchModel(modelKey) {
+                fetch('/switch_model', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({model: modelKey})
+                })
+                .then(response => response.json())
+                .then(data => {
+                    statusIndicator.textContent = data.message;
+                    if (data.status === 'loading') {
+                        sendButton.disabled = true;
+                        userInput.disabled = true;
+                        // Check status again in 3 seconds
+                        setTimeout(checkModelStatus, 3000);
+                    } else if (data.status === 'success') {
+                        sendButton.disabled = false;
+                        userInput.disabled = false;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error switching model:', error);
+                    statusIndicator.textContent = 'Error switching model';
+                });
+            }
+            
+            function preloadAllModels() {
+                fetch('/preload')
+                .then(response => response.json())
+                .then(data => {
+                    statusIndicator.textContent = data.message;
+                })
+                .catch(error => {
+                    console.error('Error preloading models:', error);
+                    statusIndicator.textContent = 'Error preloading models';
+                });
+            }
+        });
+    </script>
+</body>
+</html>
