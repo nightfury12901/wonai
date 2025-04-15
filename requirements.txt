@@ -1,0 +1,7 @@
+langchain
+langchain-community
+gpt4all
+flask
+requests
+pillow
+opencv-python
