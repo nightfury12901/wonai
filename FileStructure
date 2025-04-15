@@ -1,0 +1,14 @@
+Cosmos/
+├── models/
+│  
+├── workflows/
+│   ├── image_generation.json
+│   └── video_generation.json
+├── app/
+│   
+├── static/
+│   └── outputs/        # Stores generated media
+├── templates/
+│   
+├── requirements.txt
+└── README.md
