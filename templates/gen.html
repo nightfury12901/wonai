@@ -1,0 +1,240 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ComfyUI Generator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 16px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 100%;
+            margin-top: 10px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .hidden {
+            display: none;
+        }
+        .results {
+            margin-top: 20px;
+        }
+        .results h2 {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+        .result-items {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            grid-gap: 15px;
+        }
+        .result-item {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            text-align: center;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .result-item img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+        }
+        .result-item video {
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+        }
+        .result-item .filename {
+            margin-top: 8px;
+            font-size: 14px;
+            color: #666;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .nav-links {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .nav-link {
+            display: inline-block;
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 0 10px;
+        }
+        .nav-link:hover {
+            background-color: #0069d9;
+        }
+        #loading {
+            text-align: center;
+            margin-top: 20px;
+        }
+        #loading img {
+            width: 50px;
+            height: 50px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ComfyUI Generator</h1>
+        
+        <form id="generatorForm">
+            <div class="form-group">
+                <label for="prompt">Enter Your Prompt:</label>
+                <textarea id="prompt" name="prompt" rows="4" placeholder="Describe what you want to generate..." required></textarea>
+            </div>
+            
+            <div class="form-group">
+                <label for="type">Generation Type:</label>
+                <select id="type" name="type">
+                    <option value="image">Image</option>
+                    <option value="video">Video/Animation</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="workflow_file">Custom Workflow JSON (optional):</label>
+                <input type="file" id="workflow_file" name="workflow_file" accept=".json">
+            </div>
+            
+            <button type="submit">Generate</button>
+        </form>
+        
+        <div id="status" class="status hidden">
+            <p>Processing your request... This may take a few minutes depending on the complexity.</p>
+            <div id="loading">
+                <div class="spinner"></div>
+            </div>
+        </div>
+        
+        <div id="results" class="results hidden">
+            <h2>Generated Results</h2>
+            <div id="resultItems" class="result-items"></div>
+        </div>
+        
+        <div class="nav-links">
+            <a href="/view_results" class="nav-link">View All Generated Files</a>
+        </div>
+    </div>
+    
+    <script>
+        document.getElementById('generatorForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            // Show status and hide previous results
+            document.getElementById('status').classList.remove('hidden');
+            document.getElementById('results').classList.add('hidden');
+            
+            const formData = new FormData(this);
+            
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    document.getElementById('status').innerHTML = `<p>Error: ${data.error}</p>`;
+                } else {
+                    // Hide status and show results
+                    document.getElementById('status').classList.add('hidden');
+                    document.getElementById('results').classList.remove('hidden');
+                    
+                    const resultItems = document.getElementById('resultItems');
+                    resultItems.innerHTML = '';
+                    
+                    // Display each generated file
+                    data.files.forEach(file => {
+                        const item = document.createElement('div');
+                        item.className = 'result-item';
+                        
+                        if (file.type === 'image') {
+                            item.innerHTML = `
+                                <img src="${file.url}" alt="Generated Image">
+                                <div class="filename">${file.filename}</div>
+                            `;
+                        } else if (file.type === 'video') {
+                            if (file.filename.endsWith('.gif')) {
+                                item.innerHTML = `
+                                    <img src="${file.url}" alt="Generated Animation">
+                                    <div class="filename">${file.filename}</div>
+                                `;
+                            } else {
+                                item.innerHTML = `
+                                    <video controls>
+                                        <source src="${file.url}" type="video/mp4">
+                                        Your browser does not support the video tag.
+                                    </video>
+                                    <div class="filename">${file.filename}</div>
+                                `;
+                            }
+                        }
+                        
+                        resultItems.appendChild(item);
+                    });
+                }
+            } catch (error) {
+                document.getElementById('status').innerHTML = `<p>Error: ${error.message}</p>`;
+            }
+        });
+    </script>
+</body>
+</html>

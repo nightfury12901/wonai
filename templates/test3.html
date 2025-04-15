@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Content Generator</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        .loading-spinner {
+            display: inline-block;
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(0, 0, 0, 0.3);
+            border-radius: 50%;
+            border-top-color: #3498db;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .chat-message {
+            border-radius: 18px;
+            margin-bottom: 10px;
+            padding: 10px 15px;
+            position: relative;
+            max-width: 80%;
+        }
+        
+        .user-message {
+            background-color: #e2f5fe;
+            margin-left: auto;
+            border-bottom-right-radius: 5px;
+        }
+        
+        .ai-message {
+            background-color: #f0f0f0;
+            margin-right: auto;
+            border-bottom-left-radius: 5px;
+        }
+        
+        .settings-panel {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+        }
+        
+        .settings-panel.open {
+            max-height: 800px;
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        
+        /* New styles from second snippet */
+        .result-item {
+            margin-bottom: 20px;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: white;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .result-item h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        .result-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+            display: block;
+            margin: 10px 0;
+        }
+        .result-video {
+            max-width: 100%;
+            border-radius: 5px;
+            display: block;
+            margin: 10px 0;
+        }
+        .result-text {
+            white-space: pre-wrap;
+            background-color: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-family: monospace;
+            line-height: 1.6;
+        }
+        .prompt {
+            font-style: italic;
+            color: #666;
+            margin-bottom: 10px;
+        }
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .loading:after {
+            content: '';
+            width: 30px;
+            height: 30px;
+            border: 4px solid #ddd;
+            border-top-color: #2196F3;
+            border-radius: 50%;
+            animation: spinner 1s ease-in-out infinite;
+        }
+        @keyframes spinner {
+            to {transform: rotate(360deg);}
+        }
+        .error {
+            color: #d32f2f;
+            background-color: #ffebee;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        .close-results {
+            float: right;
+            background: none;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            color: #666;
+        }
+        .close-results:hover {
+            color: #333;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto p-4">
+        <!-- Header -->
+        <header class="bg-white shadow rounded-lg p-4 mb-4">
+            <div class="flex justify-between items-center">
+                <h1 class="text-2xl font-bold text-gray-800">
+                    <i class="fas fa-brain text-blue-500 mr-2"></i>
+                    AI Content Generator
+                </h1>
+                <button id="settingsToggle" class="text-gray-600 hover:text-gray-800 focus:outline-none">
+                    <i class="fas fa-cog text-xl"></i>
+                    <span class="ml-1">Settings</span>
+                </button>
+            </div>
+        </header>
+        
+        <!-- Settings Panel -->
+        <div id="settingsPanel" class="settings-panel bg-white shadow rounded-lg mb-4 overflow-hidden">
+            <div class="p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-semibold text-gray-800">Generation Settings</h2>
+                    <button id="resetSettings" class="bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600 transition">
+                        Reset to Default
+                    </button>
+                </div>
+                
+                <!-- Model Selection -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">Image/Video Model</label>
+                        <select id="modelSelect" class="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="dreamshaper_8.safetensors">Dreamshaper 8 (Realistic)</option>
+                            <option value="realistic_vision_5.0.safetensors">Realistic Vision 5.0</option>
+                            <option value="meinamix_11.safetensors">Meinamix 11</option>
+                            <option value="animation_world_V4.safetensors">Animation World V4 (Cartoon)</option>
+                            <option value="anythingV5_PrtRE.safetensors">Anything V5 (Anime)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">Animation Model</label>
+                        <select id="animationModelSelect" class="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="mm_sd_v15_v2.ckpt">MM SD v15 v2 (Default)</option>
+                            <option value="mm_sd_v14.ckpt">MM SD v14</option>
+                            <option value="mm_sd_v15.ckpt">MM SD v15</option>
+                            <option value="aniverse_v11.ckpt">Aniverse v11 (Anime)</option>
+                            <option value="animation_model.ckpt">Animation Model (Cartoon)</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <!-- Image & Video Settings -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">Steps <span id="stepsValue">20</span></label>
+                        <input type="range" id="stepsSlider" min="10" max="50" value="20" class="w-full">
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">CFG Scale <span id="cfgValue">8</span></label>
+                        <input type="range" id="cfgSlider" min="1" max="15" value="8" class="w-full">
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">Frame Rate <span id="fpsValue">8</span> fps</label>
+                        <input type="range" id="fpsSlider" min="4" max="30" value="8" class="w-full">
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">Width <span id="widthValue">512</span>px</label>
+                        <input type="range" id="widthSlider" min="256" max="1024" step="64" value="512" class="w-full">
+                    </div>
+                    <div>
+                        <label class="block text-gray-700 font-medium mb-2">Height <span id="heightValue">512</span>px</label>
+                        <input type="range" id="heightSlider" min="256" max="1024" step="64" value="512" class="w-full">
+                    </div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 font-medium mb-2">Negative Prompt</label>
+                    <input type="text" id="negativePrompt" class="w-full p-2 border rounded focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                           value="text, watermark, (worst quality, low quality: 1.4)">
+                </div>
+                
+                <div class="flex justify-end">
+                    <button id="saveSettings" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition">
+                        Save Settings
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Chat Area -->
+        <div class="bg-white shadow rounded-lg p-4 mb-4">
+            <div id="chatContainer" class="h-96 overflow-y-auto mb-4 p-2">
+                <div class="ai-message chat-message fade-in">
+                    <p>Hello! I'm your AI Content Generator. I can create text content, images, and videos. What would you like me to help you with today?</p>
+                </div>
+            </div>
+            
+            <!-- Input area -->
+            <div class="flex items-center">
+                <textarea id="userInput" class="flex-grow p-2 border rounded-l focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                          placeholder="Describe what you'd like me to create..." rows="2"></textarea>
+                <button id="sendButton" class="bg-blue-500 text-white px-4 py-2 h-full rounded-r hover:bg-blue-600 transition">
+                    <i class="fas fa-paper-plane mr-1"></i>
+                    Send
+                </button>
+            </div>
+        </div>
+        
+        <!-- Results Container (Added from second snippet) -->
+        <div id="results-container" class="bg-white shadow rounded-lg p-4 mb-4" style="display: none;"></div>
+        
+        <!-- Examples -->
+        <div class="bg-white shadow rounded-lg p-4">
+            <h2 class="text-lg font-semibold text-gray-800 mb-3">Try these examples:</h2>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <button class="example-btn bg-gray-100 p-3 rounded hover:bg-gray-200 transition text-left">
+                    Generate a script for a 60-second commercial about a smart home device.
+                </button>
+                <button class="example-btn bg-gray-100 p-3 rounded hover:bg-gray-200 transition text-left">
+                    Create an image of a futuristic city at night with neon lights.
+                </button>
+                <button class="example-btn bg-gray-100 p-3 rounded hover:bg-gray-200 transition text-left">
+                    Write a script for a conversation between aliens, create a movie poster and a 5-second video of the aliens talking.
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div id="loadingModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg shadow-lg flex flex-col items-center">
+            <div class="loading-spinner mb-4"></div>
+            <p id="loadingMessage" class="text-gray-700 font-medium">Generating content...</p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM Elements
+            const chatContainer = document.getElementById('chatContainer');
+            const userInput = document.getElementById('userInput');
+            const sendButton = document.getElementById('sendButton');
+            const settingsToggle = document.getElementById('settingsToggle');
+            const settingsPanel = document.getElementById('settingsPanel');
+            const resetSettings = document.getElementById('resetSettings');
+            const saveSettings = document.getElementById('saveSettings');
+            const loadingModal = document.getElementById('loadingModal');
+            const loadingMessage = document.getElementById('loadingMessage');
+            const exampleButtons = document.querySelectorAll('.example-btn');
+            const resultsContainer = document.getElementById('results-container');
+            
+            // Settings elements
+            const modelSelect = document.getElementById('modelSelect');
+            const animationModelSelect = document.getElementById('animationModelSelect');
+            const stepsSlider = document.getElementById('stepsSlider');
+            const stepsValue = document.getElementById('stepsValue');
+            const cfgSlider = document.getElementById('cfgSlider');
+            const cfgValue = document.getElementById('cfgValue');
+            const fpsSlider = document.getElementById('fpsSlider');
+            const fpsValue = document.getElementById('fpsValue');
+            const widthSlider = document.getElementById('widthSlider');
+            const widthValue = document.getElementById('widthValue');
+            const heightSlider = document.getElementById('heightSlider');
+            const heightValue = document.getElementById('heightValue');
+            const negativePrompt = document.getElementById('negativePrompt');
+            
+            // Initialize settings
+            loadSettings();
+            
+            // Event listeners
+            sendButton.addEventListener('click', sendMessage);
+            userInput.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    sendMessage();
+                }
+            });
+            
+            settingsToggle.addEventListener('click', function() {
+                settingsPanel.classList.toggle('open');
+            });
+            
+            resetSettings.addEventListener('click', function() {
+                fetch('/api/settings/reset', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        updateSettingsUI(data.settings);
+                        alert('Settings reset to default values.');
+                    }
+                })
+                .catch(error => console.error('Error resetting settings:', error));
+            });
+            
+            saveSettings.addEventListener('click', function() {
+                const settings = {
+                    model: modelSelect.value,
+                    animation_model: animationModelSelect.value,
+                    steps: parseInt(stepsSlider.value),
+                    cfg: parseInt(cfgSlider.value),
+                    frame_rate: parseInt(fpsSlider.value),
+                    width: parseInt(widthSlider.value),
+                    height: parseInt(heightSlider.value),
+                    negative_prompt: negativePrompt.value
+                };
+                
+                fetch('/api/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(settings)
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert('Settings saved successfully.');
+                        settingsPanel.classList.remove('open');
+                    }
+                })
+                .catch(error => console.error('Error saving settings:', error));
+            });
+            
+            // Slider event listeners
+            stepsSlider.addEventListener('input', function() {
+                stepsValue.textContent = this.value;
+            });
+            
+            cfgSlider.addEventListener('input', function() {
+                cfgValue.textContent = this.value;
+            });
+            
+            fpsSlider.addEventListener('input', function() {
+                fpsValue.textContent = this.value;
+            });
+            
+            widthSlider.addEventListener('input', function() {
+                widthValue.textContent = this.value;
+            });
+            
+            heightSlider.addEventListener('input', function() {
+                heightValue.textContent = this.value;
+            });
+            
+            // Example button listeners
+            exampleButtons.forEach(btn => {
+                btn.addEventListener('click', function() {
+                    userInput.value = this.textContent.trim();
+                    sendMessage();
+                });
+            });
+            
+            // Functions
+            function loadSettings() {
+                fetch('/api/settings')
+                .then(response => response.json())
+                .then(data => {
+                    updateSettingsUI(data);
+                })
+                .catch(error => console.error('Error loading settings:', error));
+            }
+            
+            function updateSettingsUI(settings) {
+                modelSelect.value = settings.model;
+                animationModelSelect.value = settings.animation_model;
+                stepsSlider.value = settings.steps;
+                stepsValue.textContent = settings.steps;
+                cfgSlider.value = settings.cfg;
+                cfgValue.textContent = settings.cfg;
+                fpsSlider.value = settings.frame_rate;
+                fpsValue.textContent = settings.frame_rate;
+                widthSlider.value = settings.width;
+                widthValue.textContent = settings.width;
+                heightSlider.value = settings.height;
+                heightValue.textContent = settings.height;
+                negativePrompt.value = settings.negative_prompt;
+            }
+            
+            function sendMessage() {
+                const message = userInput.value.trim();
+                if (message === '') return;
+                
+                // Add user message to chat
+                addMessage(message, 'user');
+                userInput.value = '';
+                
+                // Show loading modal
+                loadingModal.classList.remove('hidden');
+                loadingMessage.textContent = 'Analyzing your request...';
+                
+                // Send message to API
+                fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ prompt: message })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    loadingModal.classList.add('hidden');
+                    
+                    if (data.results && data.results.length > 0) {
+                        // Add simple confirmation message to chat
+                        addMessage('Content generated successfully! Check the results below.', 'ai');
+                        
+                        // Display detailed results in the results container
+                        displayResults(data, resultsContainer);
+                    } else {
+                        addMessage('No results returned from the AI. Please try again.', 'ai');
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    loadingModal.classList.add('hidden');
+                    addMessage('There was an error processing your request. Please try again.', 'ai');
+                });
+            }
+            
+            function addMessage(text, sender) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `${sender}-message chat-message fade-in`;
+                
+                const content = document.createElement('p');
+                content.textContent = text;
+                messageDiv.appendChild(content);
+                
+                chatContainer.appendChild(messageDiv);
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+            
+            // Function to display results in the container (from second snippet)
+            function displayResults(data, container) {
+                const results = data.results || [];
+                
+                let html = `
+                    <button class="close-results" onclick="document.getElementById('results-container').style.display='none'">×</button>
+                    <h2 class="text-xl font-semibold text-gray-800 mb-4">Generation Results</h2>
+                `;
+                
+                if (results.length === 0) {
+                    html += '<p>No results were generated.</p>';
+                } else {
+                    results.forEach(result => {
+                        if (result.status === 'error') {
+                            html += `
+                                <div class="result-item">
+                                    <h3>Error</h3>
+                                    <p class="error">${result.message}</p>
+                                </div>
+                            `;
+                            return;
+                        }
+                        
+                        html += `<div class="result-item">`;
+                        
+                        if (result.prompt) {
+                            html += `<p class="prompt">Prompt: "${result.prompt}"</p>`;
+                        }
+                        
+                        switch (result.type) {
+                            case 'image':
+                                html += `
+                                    <h3>Generated Image</h3>
+                                    <img class="result-image" src="/static/${result.file_path}" alt="Generated image" 
+                                         onclick="window.open('/static/${result.file_path}', '_blank')">
+                                    <small>Click image to open in full size</small>
+                                `;
+                                break;
+                                
+                            case 'video':
+                                html += `
+                                    <h3>Generated Video</h3>
+                                    <video class="result-video" controls autoplay loop>
+                                        <source src="/static/${result.file_path}" type="${getVideoMimeType(result.file_path)}">
+                                        Your browser does not support the video tag.
+                                    </video>
+                                `;
+                                break;
+                                
+                            case 'text':
+                                html += `
+                                    <h3>Generated Text</h3>
+                                    <div class="result-text">${escapeHTML(result.message)}</div>
+                                `;
+                                break;
+                                
+                            default:
+                                html += `
+                                    <h3>Result</h3>
+                                    <p>${result.message || 'No details available'}</p>
+                                `;
+                        }
+                        
+                        html += `</div>`;
+                    });
+                    
+                    // Add a button to generate more content
+                    html += `
+                        <button style="display: block; margin: 20px auto; padding: 10px 20px; background-color: #4CAF50; 
+                                      color: white; border: none; border-radius: 5px; cursor: pointer;"
+                                onclick="document.getElementById('userInput').focus()">
+                            Generate More Content
+                        </button>
+                    `;
+                }
+                
+                container.innerHTML = html;
+                container.style.display = 'block';
+                
+                // Scroll to results
+                container.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+            
+            // Helper function to get MIME type from file extension
+            function getVideoMimeType(filename) {
+                if (filename.endsWith('.gif')) return 'image/gif';
+                if (filename.endsWith('.mp4')) return 'video/mp4';
+                if (filename.endsWith('.webm')) return 'video/webm';
+                return 'video/mp4'; // Default
+            }
+            
+            // Helper function to escape HTML
+            function escapeHTML(str) {
+                if (!str) return '';
+                return str
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;')
+                    .replace(/\n/g, '<br>');
+            }
+        });
+    </script>
+</body>
+</html>
